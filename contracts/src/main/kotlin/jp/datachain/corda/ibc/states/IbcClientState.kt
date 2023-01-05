@@ -31,6 +31,7 @@ data class IbcClientState private constructor (
     val impl : ClientState = when {
         anyClientState.`is`(Corda.ClientState::class.java) -> CordaClientState(anyClientState, anyConsensusStates)
         anyClientState.`is`(Fabric.ClientState::class.java) -> FabricClientState(anyClientState, anyConsensusStates)
+        //TODO: LCP Clientを追加
         anyClientState.`is`(Tendermint.ClientState::class.java) -> throw NotImplementedError()
         anyClientState.`is`(Solomachine.ClientState::class.java) -> throw NotImplementedError()
         anyClientState.`is`(Localhost.ClientState::class.java) -> throw NotImplementedError()
