@@ -5,6 +5,7 @@ import com.google.protobuf.ByteString
 import com.r3.conclave.common.OpaqueBytes
 import com.r3.conclave.common.internal.SgxReportBody
 import com.r3.conclave.common.internal.attestation.EpidAttestation
+import com.r3.conclave.common.internal.attestation.EpidQuoteStatus
 import ibc.core.channel.v1.ChannelOuterClass
 import ibc.core.client.v1.Client
 import ibc.core.client.v1.Genesis
@@ -187,7 +188,13 @@ data class LcpClientState constructor(
 
         // EpidAttestation verifies Report before instantiating.
         val attestation = EpidAttestation(OpaqueBytes.parse(header.header.report), OpaqueBytes.of(*header.header.signature.toByteArray()), certPath)
-        // TODO: Check a securitySummary and advisoryIDs
+
+        if (attestation.report.isvEnclaveQuoteStatus == EpidQuoteStatus.OK) {
+            require(attestation.report.advisoryIDs == null || attestation.report.advisoryIDs!!.isEmpty()) { "AdvisoryIDs should be empty when status is OK: advisoryIDs = ${attestation.report.advisoryIDs}" }
+        } else {
+            require(isAllowedStatus(attestation.report.isvEnclaveQuoteStatus)) { "Unmatched AllowedStatus" }
+            require(isAllowedAdvisoryIds(attestation.report.advisoryIDs)) { "Unmatched AllowedAdvisoryIds" }
+        }
 
         val mrenclave = ByteString.copyFrom(attestation.reportBody[SgxReportBody.mrenclave].read())
         require(clientState.mrenclave == mrenclave) { "Unmatched mrenclave: clientState.mrenclave != mrenclve (${clientState.mrenclave} != $mrenclave)" }
@@ -200,6 +207,22 @@ data class LcpClientState constructor(
             .build()
 
         return Pair(this.copy(anyClientState = newClientState.pack()), this.consensusStates[getLatestHeight()]!!)
+    }
+
+    private fun isAllowedStatus(status: EpidQuoteStatus): Boolean {
+        return if (status == EpidQuoteStatus.OK) {
+            true
+        } else {
+            clientState.allowedQuoteStatusesList.contains(status.name)
+        }
+    }
+
+    private fun isAllowedAdvisoryIds(advisoryIds: List<String>?): Boolean {
+        return if (advisoryIds == null || advisoryIds.isEmpty()) {
+            true
+        } else {
+            clientState.allowedAdvisoryIdsList.containsAll(advisoryIds)
+        }
     }
 
     override fun checkMisbehaviourAndUpdateState(misbehaviour: Misbehaviour): ClientState {
